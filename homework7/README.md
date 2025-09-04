@@ -133,7 +133,7 @@ facilities and a semi-complete typechecker.
 The exercise involves completing the following components (Total points: 100).
 
 1. Extend the type checker to handle recursive functions and references.
-   (TODO 1, file `src/MiniML/Typechecking.hs`, 20 points)
+   (TODO 1, file `src/MiniML/Typechecking.hs`, 20 points) -- ksekinaw me auto
 2. Write an environment-based interpreter that supports all MiniML operations and
    accurately implements the semantics of MiniML.
    (TODO 2, file `src/MiniML/Eval.hs`, 30 points)

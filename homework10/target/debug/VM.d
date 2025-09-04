@@ -1,0 +1,1 @@
+/home/giorg/exercises/PL2/homework10/target/debug/VM: /home/giorg/exercises/PL2/homework10/src/bytecode.rs /home/giorg/exercises/PL2/homework10/src/heap.rs /home/giorg/exercises/PL2/homework10/src/main.rs /home/giorg/exercises/PL2/homework10/src/vm.rs

@@ -6,6 +6,16 @@ import Test.Tasty.QuickCheck
 import MiniML
 import Gen
 
+import Test.Framework (defaultMain, testGroup, Test)
+import Test.Framework.Providers.HUnit (hUnitTestToTests)
+import Test.HUnit
+import MiniML.Parse (parse) -- To parse MiniML code strings
+import MiniML.Lex (lexer)   -- To lex MiniML code strings
+import MiniML.Typeinf (inferTypeTop, showTypeScheme) -- To use your type inference functions and show types
+import MiniML.Error (Error)
+import MiniML.Syntax (TypeScheme, Type(..)) -- To define expected types and handle TypeScheme
+import Text.ParserCombinators.Parsec (parse) -- Make sure to import the correct `parse`
+
 -- The main testing function. Runs a series of tests. Add as many additional
 -- tests as you want.
 
@@ -27,7 +37,7 @@ parserRoundTrip =
 
 
 testTypeInf :: Property
-testTypeInf = counterexample "FILL IN HERE!" False
+testTypeInf = counterexample "FILL IN HERE!" False -- ok i need to add stuff here
 
 
 someProperty :: Property

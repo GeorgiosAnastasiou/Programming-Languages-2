@@ -22,6 +22,7 @@ type Ctx = M.Map String Type
 -- 3. Dereferencing (`!e`)
 -- 4. Assignment (`e1 := e2`):
 
+
 -- Throw a typechecking error
 typeError :: Posn -> String -> Error Type
 typeError p msg = Left (p, msg)
@@ -131,16 +132,85 @@ typeCheck env (Let _ x t e1 e2) = do
     t1 <- typeCheck env e1
     if t1 == t then typeCheck (M.insert x t env) e2
     else typeError (getPosn e1) ("Expression is expected to have type " <> showType t <> " but has type " <> showType t1)
+
 -- Let rec
-typeCheck _ (LetRec _ _ _ _ _ _ _) = error "FILL IN HERE"
+-- prepei na vrw ti thelei na kratisw apo metavlites kai ti oxi 
+-- (`let rec f (x : t1) : t2 = e1 in e2`) 
+
+
+
+typeCheck env (LetRec _ f x t1 t2 e1 e2) = do
+    let funcType = TArrow t1 t2
+  
+    -- 1. Assume f has type t1 -> t2 and check e1
+    t1' <- typeCheck (M.insert f funcType (M.insert x t1 env)) e1
+  
+    -- 2. Verify that e1 returns type t2 (to e1 kanei return t1')
+    if t1' == t2
+        then typeCheck (M.insert f funcType env) e2
+        else typeError (getPosn e1) ("Function body expected to have type " <> showType t2 <> " but has type " <> showType t1')
+
+    -- return
+
+
 -- References
-typeCheck _ (Asgn _ _ _) = error "FILL IN HERE"
-typeCheck _ (Deref _ _) = error "FILL IN HERE"
-typeCheck _  (Ref _ _) = error "FILL IN HERE"
+
+typeCheck env (Asgn _ e1 e2) = do -- perivallon prin (e1) kai meta (e2) to assign
+    t1 <- typeCheck env e1
+    t2 <- typeCheck env e2
+    case t1 of 
+        TRef tInner -> 
+            if t2 == tInner
+                then return TUnit
+                else typeError (getPosn e2) ("Expected type " <> showType tInner <> " but got " <> showType t2)
+        _ -> typeError (getPosn e1) ("Expected reference type but got " <> showType t1)
+
+
+
+
+
+
+
+
+typeCheck env (Deref _ e) = do
+    t <- typeCheck env e
+    case t of
+        TRef tInner -> return tInner
+        _ -> typeError (getPosn e) ("Type is not reference") --efoson den tautizetai me tin domi
+
+
+
+
+
+typeCheck env (Ref _ e) = do
+    t <- typeCheck env e
+    return (TRef t)
+
+
+
+
+
+
+
+
+
+
 
 -- Top-level typechecking function with an empty context
+
+--was
+--typeCheckTop :: Exp -> Error Type
+--typeCheckTop = typeCheck M.empty
+
+--typeCheckTop :: Exp -> Error Type
+--typeCheckTop exp = typeCheck initialEnv exp
+--  where
+--    initialEnv = M.fromList [("v1", TUnit), ("v2", TUnit), ("v3", TUnit)]
+
 typeCheckTop :: Exp -> Error Type
-typeCheckTop = typeCheck M.empty
+typeCheckTop exp = typeCheck initialEnv exp
+  where
+    initialEnv = M.fromList [("v1", TUnit), ("v2", TUnit), ("v3", TUnit)] -- Default to TUnit
 
 -- You may ignore the implementation details of the following but make sure you
 -- understand the type signature and high-level functionality.
@@ -236,8 +306,10 @@ typeCheckVTop store val = do
         vtyp <- typeCheckV senv' val'
         return $ M.insert loc vtyp senv'
 
-
--- Sorts a store in topological order of locations so that we can find its typing
+typeCheckWithType :: Type -> Exp -> Error Type
+typeCheckWithType t exp = typeCheck initialEnv exp
+  where
+    initialEnv = M.fromList [("v1", t), ("v2", t), ("v3", t)]
 
 topologicalSort :: Store -> [(Loc, Value)]
 topologicalSort store =

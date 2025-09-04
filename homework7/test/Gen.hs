@@ -3,24 +3,22 @@ module Gen where
 import Test.QuickCheck
 import Control.Monad
 import qualified Data.Map as M
-
 import MiniML.Syntax
 
--- Generators for random programs
-
--- Simple random generators of types and terms. No well-formedness invariant.
--- Useful for testing the parser
-
 genTypeSize :: Int -> Gen Type
-genTypeSize 0 =
-    elements [ TInt, TBool, TUnit ]
+genTypeSize 0 = elements [TInt, TBool, TUnit]
 genTypeSize s =
-    frequency [ (2, elements [ TInt, TBool, TUnit ])
-              , (1, liftM2 TArrow genTypeS genTypeS)
-              , (1, liftM2 TSum genTypeS genTypeS)
-              , (1, liftM2 TProd genTypeS genTypeS) ]
-    where
-        genTypeS = genTypeSize (s-1)
+  let genTypeS = genTypeSize (s - 1)
+   in frequency
+        [ (3, elements [TInt, TBool, TUnit])
+        , (2, liftM2 TArrow genTypeS genTypeS)
+        , (1, liftM2 TSum genTypeS genTypeS)
+        , (1, liftM2 TProd genTypeS genTypeS)
+        , (1, TRef <$> genTypeS)
+        ]
+
+genExp :: Gen Exp
+genExp = scale (min 20) $ sized genExpSize
 
 genType :: Gen Type
 genType = scale (min 10) $ sized genTypeSize
@@ -31,85 +29,137 @@ genBop = elements [Plus, Minus, Mult, Div, And, Or, Lt, Gt, Le, Ge, Eq]
 genVar :: Gen String
 genVar = do
   n <- chooseInt (1, 200)
-  x <- elements [ "x", "y", "z", "test_42", "foo_", "_bar", "z21", "f", "g", "lala"]
+  x <- elements ["x", "y", "z", "test_42", "foo_", "_bar", "z21", "f", "g", "lala"]
   return (x ++ show n)
 
--- Generate an expression of a given size
-genExpSize :: Int -> Gen Exp
-genExpSize s = case s of
-    0 -> baseCases
-    _ -> frequency [ (2, baseCases)
-                   , (1, liftM2 (App nowhere) genExpS genExpS)
-                   , (1, liftM4 (Abs nowhere) genVar genTypeS (return Nothing) genExpS)
-                   , (1, liftM3 (ITE nowhere) genExpS genExpS genExpS)
-                   , (1, liftM3 (Bop nowhere) genBop genExpS genExpS)
-                   , (1, liftM  (Uop nowhere Not) genExpS)
-                   , (1, liftM2 (Pair nowhere) genExpS genExpS)
-                   , (1, liftM  (Fst nowhere) genExpS)
-                   , (1, liftM  (Snd nowhere) genExpS)
-                   , (1, liftM2 (Inl nowhere) genTypeS genExpS)
-                   , (1, liftM2 (Inr nowhere) genTypeS genExpS)
-                   , (1, liftM5 (Case nowhere) genExpS genVar genExpS genVar genExpS)
-                   , (1, liftM4 (Let nowhere) genVar genTypeS genExpS genExpS)
-                   , (1, do
-                           x <- genVar
-                           liftM5 (LetRec nowhere x) genVar genTypeS genTypeS genExpS genExpS)
-                   , (1, liftM2 (Asgn nowhere) genExpS genExpS)
-                   , (1, liftM  (Deref nowhere) genExpS)
-                   , (1, liftM  (Ref nowhere) genExpS)
-                   ]
-  where
-    genExpS = genExpSize (s-1)
-    genTypeS = genTypeSize (s-1)
-    baseCases = oneof [ return (Unit nowhere)
-                      , liftM (NumLit nowhere) arbitrary
-                      , liftM (BoolLit nowhere) arbitrary ]
+freshName :: Int -> Gen String
+freshName counter = return ("x" ++ show counter)
 
+genTExpSize :: M.Map Type [String] -> Int -> Type -> Int -> Gen Exp
+genTExpSize env counter typ size =
+  case size of
+    0 -> genBaseCase env typ
+    n -> frequency [(3, genBaseCase env typ), (1, genComposite env counter typ (n - 1))]
 
--- Generate an expression of an arbitrary
-genExp :: Gen Exp
-genExp = scale (min 20) $ sized genExpSize
-
-
-
--- A generator for well-typed terms. You may use the generator for STLC programs
--- provided in the course notes as a reference:
--- https://github.com/zoep/PL2/blob/main/lectures/Haskell/src/QuickCheck.hs
-
-genTExpSize :: M.Map Type [String]  -- a map from types to variables with the corresponding types
-            -> Int                  -- counter for generating fresh names
-            -> Type                 -- the type of the generated terms
-            -> Int                  -- The size of the term.
-            -> Gen Exp
-genTExpSize _ _ t _ =
-  case t of
-    TBool        -> error "FILL IN HERE"
-    TInt         -> error "FILL IN HERE"
-    TUnit        -> error "FILL IN HERE"
-    TSum _ _     -> error "FILL IN HERE"
-    TProd _ _    -> error "FILL IN HERE"
-    TArrow _ _   -> error "FILL IN HERE"
-    TRef _       -> error "FILL IN HERE"
-
-
-
--- Top-level function for generating well-typed expressions. You may tweak them
--- if you wish, but do not change their types.
-
--- Generate a well-type term
-genWTExp :: Gen Exp
-genWTExp = do
-  size <- arbitrary
-  t <- genType
-  genTExpSize M.empty 1 t size
-
--- Generate a well-type term of a certain type
-genExpOfType :: Type -> Gen Exp
-genExpOfType t = genTExpSize M.empty 1 t 3
-
--- Generate a well-type term with its type
-genExpType :: Gen (Exp,Type)
+genExpType :: Gen (Exp, Type)
 genExpType = do
-  t <- scale (min 10) $ sized genTypeSize
-  e <- scale (min 10) $ sized $ genTExpSize M.empty 1 t
-  return (e,t)
+  typ <- genType
+  expr <- genExpOfType typ
+  return (expr, typ)
+
+--genExpOfType :: Type -> Gen Exp
+--genExpOfType t = sized $ \s -> do
+--  let initialEnv = M.fromList [(t, ["v1", "v2", "v3"])]
+--  genTExpSize initialEnv 0 t (min 5 s)
+
+genVarOfType :: M.Map Type [String] -> Type -> Gen Exp
+genVarOfType env typ =
+  case M.lookup typ env of
+    Just vars | not (null vars) -> elements (map (Var nowhere) vars)
+    _ -> fallbackLiteral typ
+  where
+    fallbackLiteral TBool = oneof [return (BoolLit nowhere True), return (BoolLit nowhere False)]
+    fallbackLiteral TInt = liftM (NumLit nowhere) arbitrary
+    fallbackLiteral TUnit = return (Unit nowhere)
+    fallbackLiteral _ = error "No literal available for this type"
+
+genExpSize :: Int -> Gen Exp
+genExpSize s =
+  case s of
+    0 -> baseCases
+    _ ->
+      frequency
+        [ (2, baseCases)
+        , (1, liftM2 (App nowhere) genExpS genExpS)
+        , (1, liftM4 (Abs nowhere) genVar genTypeS (return Nothing) genExpS)
+        , (1, liftM3 (ITE nowhere) genExpS genExpS genExpS)
+        , (1, liftM3 (Bop nowhere) genBop genExpS genExpS)
+        , (1, liftM (Uop nowhere Not) genExpS)
+        , (1, liftM2 (Pair nowhere) genExpS genExpS)
+        , (1, liftM (Fst nowhere) genExpS)
+        , (1, liftM (Snd nowhere) genExpS)
+        , (1, liftM2 (Inl nowhere) genTypeS genExpS)
+        , (1, liftM2 (Inr nowhere) genTypeS genExpS)
+        , (1, liftM5 (Case nowhere) genExpS genVar genExpS genVar genExpS)
+        , (1, liftM4 (Let nowhere) genVar genTypeS genExpS genExpS)
+        , ( 1
+          , do
+              x <- genVar
+              liftM5 (LetRec nowhere x) genVar genTypeS genTypeS genExpS genExpS
+          )
+        , (1, liftM2 (Asgn nowhere) genExpS genExpS)
+        , (1, liftM (Deref nowhere) genExpS)
+        , (1, liftM (Ref nowhere) genExpS)
+        ]
+  where
+    genExpS = genExpSize (s - 1)
+    genTypeS = genTypeSize (s - 1)
+    baseCases =
+      oneof
+        [ return (Unit nowhere)
+        , liftM (NumLit nowhere) arbitrary
+        , liftM (BoolLit nowhere) arbitrary
+        ]
+
+--genBaseCase :: M.Map Type [String] -> Type -> Gen Exp
+--genBaseCase env typ =
+--  case typ of
+--    TInt -> liftM (NumLit nowhere) arbitrary
+--    TBool -> oneof [return (BoolLit nowhere True), return (BoolLit nowhere False)]
+--    TUnit -> return (Unit nowhere)
+--    _ -> genVarOfType env typ
+--
+--genComposite :: M.Map Type [String] -> Int -> Type -> Int -> Gen Exp
+--genComposite env c typ s =
+--  case typ of
+--    TArrow t1 t2 -> do
+--      x <- freshName c
+--      body <- genTExpSize (M.insertWith (++) t1 [x] env) (c + 1) t2 s
+--      return (Abs nowhere x t1 (Just t2) body)
+--    TProd t1 t2 -> Pair nowhere <$> genTExpSize env c t1 s <*> genTExpSize env c t2 s
+--    TSum t1 t2 -> oneof [Inl nowhere t2 <$> genTExpSize env c t1 s, Inr nowhere t1 <$> genTExpSize env c t2 s]
+--    TRef t' ->
+--      frequency
+--        [ (3, Ref nowhere <$> genTExpSize env c t' s)
+--        , ( 1
+--          , liftM2 (Asgn nowhere) (genTExpSize env c (TRef t') s) (genTExpSize env c t' s)
+--          )
+--        ]
+--    TUnit -> return (Unit nowhere)
+--    TInt -> liftM (NumLit nowhere) arbitrary
+--    TBool -> oneof [return (BoolLit nowhere True), return (BoolLit nowhere False)]
+
+
+genExpOfType :: Type -> Gen Exp
+genExpOfType t = sized $ \s -> do
+  let initialEnv = M.fromList [(t, ["v1", "v2", "v3"])]
+  genTExpSize initialEnv 0 t (min 5 s)
+
+genBaseCase :: M.Map Type [String] -> Type -> Gen Exp
+genBaseCase env typ = oneof
+  [ genVarOfType env typ
+  , case typ of
+      TInt  -> NumLit nowhere <$> arbitrary
+      TBool -> BoolLit nowhere <$> arbitrary
+      TUnit -> return (Unit nowhere)
+      _     -> return (Var nowhere "v1") -- Fallback to a variable if complex type is generated
+  ]
+
+-- Ensure genComposite handles all types correctly
+genComposite :: M.Map Type [String] -> Int -> Type -> Int -> Gen Exp
+genComposite env c typ s =
+  case typ of
+    TArrow t1 t2 -> do
+      x <- freshName c
+      body <- genTExpSize (M.insertWith (++) t1 [x] env) (c + 1) t2 s
+      return (Abs nowhere x t1 (Just t2) body)
+    TProd t1 t2 ->
+      Pair nowhere <$> genTExpSize env c t1 s <*> genTExpSize env c t2 s
+    TSum t1 t2 ->
+      oneof [ Inl nowhere t2 <$> genTExpSize env c t1 s,
+              Inr nowhere t1 <$> genTExpSize env c t2 s ]
+    TRef t' ->
+      frequency [ (3, Ref nowhere <$> genTExpSize env c t' s),
+                  (1, liftM2 (Asgn nowhere) (genTExpSize env c (TRef t') s)
+                                            (genTExpSize env c t' s)) ]
+    _ -> error "Unhandled type in genComposite"

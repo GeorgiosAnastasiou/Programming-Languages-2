@@ -1,0 +1,6 @@
+only edit
+
+src/MiniML/Typecheck  => ara miniml typechecker
+src/MiniML/Eval		 ara interpreter
+test/Main		 trexei ta tests (auto prepei na trexei basically mallon)
+test/Gen		 random data generators for property based testing

@@ -1,0 +1,1 @@
+/home/giorg/exercises/PL2/mic/target/debug/VM: /home/giorg/exercises/PL2/mic/src/bytecode.rs /home/giorg/exercises/PL2/mic/src/heap.rs /home/giorg/exercises/PL2/mic/src/main.rs /home/giorg/exercises/PL2/mic/src/vm.rs
